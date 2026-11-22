@@ -1,0 +1,6 @@
+{
+  "name": "Krishi Parichar",
+  "description": "Smart Farming for a Better Tomorrow — Premium Smart Agriculture and IoT Farming Dashboard Home Screen",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
