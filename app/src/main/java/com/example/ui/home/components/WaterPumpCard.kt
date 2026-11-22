@@ -1,6 +1,7 @@
 package com.example.ui.home.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -12,8 +13,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -37,7 +40,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -63,9 +68,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.data.mqtt.PumpState
 import com.example.ui.theme.AccentGreen
 import com.example.ui.theme.DeepGreen
 import com.example.ui.theme.PrimaryGreen
@@ -84,21 +91,27 @@ import kotlin.math.sin
 
 /**
  * SECTION C: Water Pump Control Card.
- * Interactive local UI-only demonstration allowing farmers to toggle between ON and OFF.
+ * Reflects strictly hardware-confirmed PumpState (ON, OFF, UNKNOWN) reported by the ESP8266
+ * via EMQX Cloud MQTT, with pending-command loading and restrained error feedback.
  */
 @Composable
 fun WaterPumpCard(
-    isPumpOn: Boolean,
-    onTogglePump: () -> Unit,
+    pumpState: PumpState,
+    isCommandPending: Boolean,
+    isLastStatusRetained: Boolean,
+    lastError: String?,
+    onPumpAction: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isConfirmedOn = pumpState == PumpState.ON
+
     val cardGradientTop by animateColorAsState(
-        targetValue = if (isPumpOn) Color(0xE0F4FCFF) else Color(0xDDF4F7FB),
+        targetValue = if (isConfirmedOn) Color(0xE0F4FCFF) else Color(0xDDF4F7FB),
         animationSpec = tween(260),
         label = "pump_card_top"
     )
     val cardGradientBottom by animateColorAsState(
-        targetValue = if (isPumpOn) Color(0xCCE5F5EE) else Color(0xCCE8EFF7),
+        targetValue = if (isConfirmedOn) Color(0xCCE5F5EE) else Color(0xCCE8EFF7),
         animationSpec = tween(260),
         label = "pump_card_bottom"
     )
@@ -111,70 +124,160 @@ fun WaterPumpCard(
         gradientColors = listOf(cardGradientTop, cardGradientBottom),
         borderColors = listOf(
             Color(0xEBFFFFFF),
-            if (isPumpOn) Color(0x8822C55E) else Color(0x88C7E1FF)
+            if (isConfirmedOn) Color(0x8822C55E) else Color(0x88C7E1FF)
         ),
         shadowElevation = 12.dp,
-        shadowTint = if (isPumpOn) PrimaryGreen.copy(alpha = 0.14f) else PrimaryText.copy(alpha = 0.08f)
+        shadowTint = if (isConfirmedOn) PrimaryGreen.copy(alpha = 0.14f) else PrimaryText.copy(alpha = 0.08f)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
-            // LEFT: Water Pump Illustration + Subtle Animated Water-Flow Visual
-            WaterPumpVisualFrame(isPumpOn = isPumpOn)
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // CENTER: Heading, Animated ON/OFF Status Indicator, & Status Subtitle
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = stringResource(R.string.pump_title),
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = PrimaryText,
-                    maxLines = 1
-                )
+                // LEFT: Water Pump Illustration + Animated Water-Flow Visual (strictly when confirmed ON)
+                WaterPumpVisualFrame(isConfirmedOn = isConfirmedOn)
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
-                PumpStatusBadge(isPumpOn = isPumpOn)
+                // CENTER: Heading, Confirmed Status Badge, Pending Indicator & Subtitle
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.pump_title),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = PrimaryText,
+                        maxLines = 1
+                    )
 
-                Spacer(modifier = Modifier.height(5.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                Text(
-                    text = stringResource(
-                        if (isPumpOn) R.string.pump_subtitle_on else R.string.pump_subtitle_off
-                    ),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = SecondaryText,
-                    maxLines = 1
+                    PumpStatusBadge(pumpState = pumpState)
+
+                    Spacer(modifier = Modifier.height(5.dp))
+
+                    if (isCommandPending) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.testTag("water_pump_pending_indicator")
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 1.8.dp,
+                                color = PrimaryGreen
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.pump_status_sending),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.4.sp
+                                ),
+                                color = DeepGreen,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        val subtitleText = when (pumpState) {
+                            PumpState.ON -> stringResource(
+                                if (isLastStatusRetained) {
+                                    R.string.pump_subtitle_retained_on
+                                } else {
+                                    R.string.pump_subtitle_on
+                                }
+                            )
+                            PumpState.OFF -> stringResource(
+                                if (isLastStatusRetained) {
+                                    R.string.pump_subtitle_retained_off
+                                } else {
+                                    R.string.pump_subtitle_off
+                                }
+                            )
+                            PumpState.UNKNOWN -> stringResource(R.string.pump_subtitle_unknown)
+                        }
+                        Text(
+                            text = subtitleText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp
+                            ),
+                            color = SecondaryText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // RIGHT: Large Circular Power Button reflecting confirmed state & pending disable
+                PowerControlButton(
+                    pumpState = pumpState,
+                    isCommandPending = isCommandPending,
+                    onClick = onPumpAction
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // RIGHT: Large Circular Power Button with Luminous Border & Shadow
-            PowerControlButton(
-                isPumpOn = isPumpOn,
-                onClick = onTogglePump
-            )
+            // Restrained inline error notice (preserves last confirmed pump state and allows retry)
+            AnimatedVisibility(
+                visible = !lastError.isNullOrBlank(),
+                enter = fadeIn(tween(180)) + expandVertically(),
+                exit = fadeOut(tween(150)) + shrinkVertically()
+            ) {
+                if (!lastError.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xD9FDECEC))
+                            .border(
+                                width = 1.dp,
+                                color = Color(0x4DD94A4A),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .testTag("water_pump_error_banner"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFB3261E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Text(
+                            text = lastError,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color(0xFF8C1D18),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun WaterPumpVisualFrame(
-    isPumpOn: Boolean,
+    isConfirmedOn: Boolean,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "water_flow")
@@ -188,7 +291,7 @@ private fun WaterPumpVisualFrame(
         label = "wave_phase"
     )
     val imageAlpha by animateFloatAsState(
-        targetValue = if (isPumpOn) 1f else 0.72f,
+        targetValue = if (isConfirmedOn) 1f else 0.72f,
         animationSpec = tween(250),
         label = "pump_image_alpha"
     )
@@ -202,7 +305,7 @@ private fun WaterPumpVisualFrame(
             .border(
                 border = BorderStroke(
                     width = 1.dp,
-                    color = if (isPumpOn) Color(0x9938BDF8) else Color(0x88FFFFFF)
+                    color = if (isConfirmedOn) Color(0x9938BDF8) else Color(0x88FFFFFF)
                 ),
                 shape = frameShape
             )
@@ -216,8 +319,8 @@ private fun WaterPumpVisualFrame(
                 .alpha(imageAlpha)
         )
 
-        // Subtle flowing water wave shimmer along the lower edge when pump is active
-        if (isPumpOn) {
+        // Subtle flowing water wave shimmer along the lower edge ONLY when confirmed ON
+        if (isConfirmedOn) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -254,21 +357,23 @@ private fun WaterPumpVisualFrame(
 
 @Composable
 private fun PumpStatusBadge(
-    isPumpOn: Boolean,
+    pumpState: PumpState,
     modifier: Modifier = Modifier
 ) {
+    val isConfirmedOn = pumpState == PumpState.ON
+
     val badgeBg by animateColorAsState(
-        targetValue = if (isPumpOn) SoftMintSurface else PumpOffBadgeBg,
+        targetValue = if (isConfirmedOn) SoftMintSurface else PumpOffBadgeBg,
         animationSpec = tween(220),
         label = "status_bg"
     )
     val badgeTextColor by animateColorAsState(
-        targetValue = if (isPumpOn) DeepGreen else PumpOffBadgeText,
+        targetValue = if (isConfirmedOn) DeepGreen else PumpOffBadgeText,
         animationSpec = tween(220),
         label = "status_text"
     )
     val dotColor by animateColorAsState(
-        targetValue = if (isPumpOn) AccentGreen else PumpOffIcon,
+        targetValue = if (isConfirmedOn) AccentGreen else PumpOffIcon,
         animationSpec = tween(220),
         label = "status_dot"
     )
@@ -279,7 +384,7 @@ private fun PumpStatusBadge(
             .background(badgeBg)
             .border(
                 width = 1.dp,
-                color = if (isPumpOn) AccentGreen.copy(alpha = 0.35f) else PumpOffBorder,
+                color = if (isConfirmedOn) AccentGreen.copy(alpha = 0.35f) else PumpOffBorder,
                 shape = RoundedCornerShape(50)
             )
             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -293,18 +398,25 @@ private fun PumpStatusBadge(
         )
         Spacer(modifier = Modifier.width(6.dp))
         AnimatedContent(
-            targetState = isPumpOn,
+            targetState = pumpState,
             transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(150)) },
             label = "pump_status_label"
-        ) { active ->
+        ) { state ->
+            val labelRes = when (state) {
+                PumpState.ON -> R.string.pump_status_on
+                PumpState.OFF -> R.string.pump_status_off
+                PumpState.UNKNOWN -> R.string.pump_status_unknown
+            }
             Text(
-                text = stringResource(if (active) R.string.pump_status_on else R.string.pump_status_off),
+                text = stringResource(labelRes),
                 style = MaterialTheme.typography.labelLarge.copy(
-                    fontSize = 12.sp,
+                    fontSize = if (state == PumpState.UNKNOWN) 10.sp else 12.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = if (state == PumpState.UNKNOWN) 0.4.sp else 0.8.sp
                 ),
                 color = badgeTextColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("water_pump_status_text")
             )
         }
@@ -313,14 +425,16 @@ private fun PumpStatusBadge(
 
 @Composable
 private fun PowerControlButton(
-    isPumpOn: Boolean,
+    pumpState: PumpState,
+    isCommandPending: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isConfirmedOn = pumpState == PumpState.ON
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
+        targetValue = if (isPressed && !isCommandPending) 0.92f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -329,27 +443,27 @@ private fun PowerControlButton(
     )
 
     val topColor by animateColorAsState(
-        targetValue = if (isPumpOn) AccentGreen else PumpOffBg,
+        targetValue = if (isConfirmedOn) AccentGreen else PumpOffBg,
         animationSpec = tween(240),
         label = "btn_top"
     )
     val bottomColor by animateColorAsState(
-        targetValue = if (isPumpOn) PrimaryGreen else Color(0xFFD5E1ED),
+        targetValue = if (isConfirmedOn) PrimaryGreen else Color(0xFFD5E1ED),
         animationSpec = tween(240),
         label = "btn_bottom"
     )
     val iconTint by animateColorAsState(
-        targetValue = if (isPumpOn) Color.White else PumpOffIcon,
+        targetValue = if (isConfirmedOn) Color.White else PumpOffIcon,
         animationSpec = tween(240),
         label = "btn_icon"
     )
     val glowRingColor by animateColorAsState(
-        targetValue = if (isPumpOn) AccentGreen.copy(alpha = 0.28f) else PumpOffBorder.copy(alpha = 0.45f),
+        targetValue = if (isConfirmedOn) AccentGreen.copy(alpha = 0.28f) else PumpOffBorder.copy(alpha = 0.45f),
         animationSpec = tween(240),
         label = "btn_glow"
     )
 
-    // Subtle outer breathing aura when active
+    // Subtle outer breathing aura when confirmed ON
     val infiniteTransition = rememberInfiniteTransition(label = "power_glow")
     val auraScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -359,6 +473,10 @@ private fun PowerControlButton(
             repeatMode = RepeatMode.Reverse
         ),
         label = "aura_scale"
+    )
+
+    val actionContentDescription = stringResource(
+        if (pumpState == PumpState.UNKNOWN) R.string.pump_turn_on_cd else R.string.pump_toggle_cd
     )
 
     Box(
@@ -371,7 +489,7 @@ private fun PowerControlButton(
         Box(
             modifier = Modifier
                 .size(66.dp)
-                .scale(if (isPumpOn) auraScale else 1f)
+                .scale(if (isConfirmedOn) auraScale else 1f)
                 .clip(CircleShape)
                 .background(glowRingColor)
         )
@@ -381,10 +499,10 @@ private fun PowerControlButton(
             modifier = Modifier
                 .size(56.dp)
                 .shadow(
-                    elevation = if (isPumpOn) 10.dp else 3.dp,
+                    elevation = if (isConfirmedOn) 10.dp else 3.dp,
                     shape = CircleShape,
-                    ambientColor = if (isPumpOn) PrimaryGreen else PrimaryText.copy(alpha = 0.2f),
-                    spotColor = if (isPumpOn) PrimaryGreen else PrimaryText.copy(alpha = 0.2f)
+                    ambientColor = if (isConfirmedOn) PrimaryGreen else PrimaryText.copy(alpha = 0.2f),
+                    spotColor = if (isConfirmedOn) PrimaryGreen else PrimaryText.copy(alpha = 0.2f)
                 )
                 .clip(CircleShape)
                 .background(
@@ -396,25 +514,34 @@ private fun PowerControlButton(
                 )
                 .border(
                     width = 1.5.dp,
-                    color = if (isPumpOn) Color(0xBBFFFFFF) else Color(0xCCFFFFFF),
+                    color = if (isConfirmedOn) Color(0xBBFFFFFF) else Color(0xCCFFFFFF),
                     shape = CircleShape
                 )
                 .clickable(
+                    enabled = !isCommandPending,
                     interactionSource = interactionSource,
                     indication = ripple(bounded = true, color = Color.White),
-                    role = Role.Switch,
-                    onClickLabel = stringResource(R.string.pump_toggle_cd),
+                    role = Role.Button,
+                    onClickLabel = actionContentDescription,
                     onClick = onClick
                 )
                 .testTag("water_pump_toggle_button"),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Rounded.PowerSettingsNew,
-                contentDescription = stringResource(R.string.pump_toggle_cd),
-                tint = iconTint,
-                modifier = Modifier.size(28.dp)
-            )
+            if (isCommandPending) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.6.dp,
+                    color = if (isConfirmedOn) Color.White else PrimaryGreen
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.PowerSettingsNew,
+                    contentDescription = actionContentDescription,
+                    tint = iconTint,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.example.ui.home.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -41,20 +42,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.data.mqtt.MqttConnectionState
 import com.example.ui.theme.AccentGreen
 import com.example.ui.theme.DeepGreen
 import com.example.ui.theme.GlassBorderLight
 import com.example.ui.theme.PrimaryGreen
 import com.example.ui.theme.PrimaryText
 import com.example.ui.theme.SecondaryText
+import com.example.ui.theme.SunAmber
 
 /**
  * SECTION A: Top Application Header with Krishi Parichar logo, title, tagline,
- * and translucent Connected status indicator pill.
+ * and live EMQX Cloud MQTT broker connectivity indicator pill.
  */
 @Composable
 fun TopHeaderSection(
-    isConnected: Boolean,
+    connectionState: MqttConnectionState,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -130,17 +133,20 @@ fun TopHeaderSection(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Right: Compact Glass Connected Status Pill
-        ConnectedStatusPill(isConnected = isConnected)
+        // Right: Compact Glass EMQX Cloud Status Pill
+        CloudConnectionStatusPill(connectionState = connectionState)
     }
 }
 
 @Composable
-private fun ConnectedStatusPill(
-    isConnected: Boolean,
+private fun CloudConnectionStatusPill(
+    connectionState: MqttConnectionState,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "connected_pulse")
+    val shouldPulse = connectionState == MqttConnectionState.CONNECTED ||
+        connectionState == MqttConnectionState.CONNECTING
+
+    val infiniteTransition = rememberInfiniteTransition(label = "cloud_status_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.55f,
@@ -160,21 +166,61 @@ private fun ConnectedStatusPill(
         label = "pulse_alpha"
     )
 
+    val dotColor by animateColorAsState(
+        targetValue = when (connectionState) {
+            MqttConnectionState.CONNECTED -> AccentGreen
+            MqttConnectionState.CONNECTING -> SunAmber
+            MqttConnectionState.DISCONNECTED -> SecondaryText
+            MqttConnectionState.ERROR -> Color(0xFFD94A4A)
+        },
+        animationSpec = tween(220),
+        label = "status_dot_color"
+    )
+
+    val labelColor by animateColorAsState(
+        targetValue = when (connectionState) {
+            MqttConnectionState.CONNECTED -> DeepGreen
+            MqttConnectionState.CONNECTING -> Color(0xFF9A5B00)
+            MqttConnectionState.DISCONNECTED -> SecondaryText
+            MqttConnectionState.ERROR -> Color(0xFFB3261E)
+        },
+        animationSpec = tween(220),
+        label = "status_label_color"
+    )
+
+    val pillTintEnd by animateColorAsState(
+        targetValue = when (connectionState) {
+            MqttConnectionState.CONNECTED -> Color(0xD2ECFAF2)
+            MqttConnectionState.CONNECTING -> Color(0xD6FFF6E5)
+            MqttConnectionState.DISCONNECTED -> Color(0xD2EEF3F8)
+            MqttConnectionState.ERROR -> Color(0xD6FDECEC)
+        },
+        animationSpec = tween(220),
+        label = "status_pill_tint"
+    )
+
+    val statusText = when (connectionState) {
+        MqttConnectionState.CONNECTED -> stringResource(R.string.status_cloud_connected)
+        MqttConnectionState.CONNECTING -> stringResource(R.string.status_cloud_connecting)
+        MqttConnectionState.DISCONNECTED -> stringResource(R.string.status_cloud_offline)
+        MqttConnectionState.ERROR -> stringResource(R.string.status_cloud_error)
+    }
+
     val pillShape = RoundedCornerShape(50)
     Row(
         modifier = modifier
             .shadow(
                 elevation = 4.dp,
                 shape = pillShape,
-                ambientColor = PrimaryGreen.copy(alpha = 0.14f),
-                spotColor = PrimaryGreen.copy(alpha = 0.14f)
+                ambientColor = dotColor.copy(alpha = 0.14f),
+                spotColor = dotColor.copy(alpha = 0.14f)
             )
             .clip(pillShape)
             .background(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0xE0FFFFFF),
-                        Color(0xD2ECFAF2)
+                        Color(0xE6FFFFFF),
+                        pillTintEnd
                     )
                 )
             )
@@ -182,7 +228,7 @@ private fun ConnectedStatusPill(
                 border = BorderStroke(1.dp, GlassBorderLight),
                 shape = pillShape
             )
-            .padding(horizontal = 11.dp, vertical = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("connectivity_status_pill"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -190,32 +236,32 @@ private fun ConnectedStatusPill(
             modifier = Modifier.size(12.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isConnected) {
+            if (shouldPulse) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .scale(pulseScale)
                         .clip(CircleShape)
-                        .background(AccentGreen.copy(alpha = pulseAlpha))
+                        .background(dotColor.copy(alpha = pulseAlpha))
                 )
             }
             Box(
                 modifier = Modifier
                     .size(7.dp)
                     .clip(CircleShape)
-                    .background(if (isConnected) AccentGreen else SecondaryText)
+                    .background(dotColor)
             )
         }
 
         Spacer(modifier = Modifier.width(6.dp))
 
         Text(
-            text = stringResource(R.string.status_connected),
+            text = statusText,
             style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 11.5.sp
+                fontSize = 11.sp
             ),
-            color = DeepGreen,
+            color = labelColor,
             maxLines = 1
         )
     }

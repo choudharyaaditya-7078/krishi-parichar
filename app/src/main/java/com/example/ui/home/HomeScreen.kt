@@ -12,18 +12,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -32,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.R
+import com.example.data.mqtt.MqttConnectionState
+import com.example.data.mqtt.PumpState
 import com.example.ui.home.components.AiCropDoctorBanner
 import com.example.ui.home.components.FarmReportsCard
 import com.example.ui.home.components.KrishiBottomNavBar
@@ -42,25 +45,26 @@ import com.example.ui.home.components.WaterPumpCard
 import com.example.ui.home.components.WelcomeHeroSection
 import com.example.ui.theme.BackgroundWhite
 import com.example.ui.theme.KrishiParicharTheme
-import com.example.ui.theme.LightBlue
 import com.example.ui.theme.SkyBlue
 import com.example.ui.theme.SoftLavender
 
 @Composable
-fun HomeRoute(
-    viewModel: HomeViewModel = viewModel()
-) {
+fun HomeRoute() {
+    val appContext = LocalContext.current.applicationContext
+    val factory = remember(appContext) { HomeViewModel.provideFactory(appContext) }
+    val viewModel: HomeViewModel = viewModel(factory = factory)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     HomeScreen(
         uiState = uiState,
-        onTogglePump = viewModel::toggleWaterPump
+        onPumpAction = viewModel::onPumpActionRequested
     )
 }
 
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
-    onTogglePump: () -> Unit,
+    onPumpAction: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
@@ -102,7 +106,7 @@ fun HomeScreen(
                 ) {
                     HomeDashboardContent(
                         uiState = uiState,
-                        onTogglePump = onTogglePump,
+                        onPumpAction = onPumpAction,
                         isTabletOrDesktop = true,
                         bottomPadding = 32.dp,
                         modifier = Modifier
@@ -119,7 +123,7 @@ fun HomeScreen(
             ) {
                 HomeDashboardContent(
                     uiState = uiState,
-                    onTogglePump = onTogglePump,
+                    onPumpAction = onPumpAction,
                     isTabletOrDesktop = isTablet,
                     bottomPadding = 108.dp,
                     modifier = Modifier
@@ -197,7 +201,7 @@ private fun SunriseAtmosphereBackdrop(
 @Composable
 private fun HomeDashboardContent(
     uiState: HomeUiState,
-    onTogglePump: () -> Unit,
+    onPumpAction: () -> Unit,
     isTabletOrDesktop: Boolean,
     bottomPadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
@@ -220,7 +224,7 @@ private fun HomeDashboardContent(
     ) {
         // SECTION A: TOP HEADER
         item(key = "section_a_header") {
-            TopHeaderSection(isConnected = uiState.isConnected)
+            TopHeaderSection(connectionState = uiState.connectionState)
         }
 
         // SECTION B: WELCOME / GREETING AREA (Over Sunlit Agricultural Landscape)
@@ -235,8 +239,11 @@ private fun HomeDashboardContent(
         // SECTION C: WATER PUMP CONTROL CARD
         item(key = "section_c_water_pump") {
             WaterPumpCard(
-                isPumpOn = uiState.isPumpOn,
-                onTogglePump = onTogglePump
+                pumpState = uiState.pumpState,
+                isCommandPending = uiState.isCommandPending,
+                isLastStatusRetained = uiState.isLastStatusRetained,
+                lastError = uiState.lastError,
+                onPumpAction = onPumpAction
             )
         }
 
@@ -269,8 +276,11 @@ private fun HomeDashboardContent(
 private fun HomeScreenPhonePreview() {
     KrishiParicharTheme {
         HomeScreen(
-            uiState = HomeUiState(),
-            onTogglePump = {}
+            uiState = HomeUiState(
+                pumpState = PumpState.ON,
+                connectionState = MqttConnectionState.CONNECTED
+            ),
+            onPumpAction = {}
         )
     }
 }
@@ -280,8 +290,11 @@ private fun HomeScreenPhonePreview() {
 private fun HomeScreenTabletPreview() {
     KrishiParicharTheme {
         HomeScreen(
-            uiState = HomeUiState(isPumpOn = false),
-            onTogglePump = {}
+            uiState = HomeUiState(
+                pumpState = PumpState.OFF,
+                connectionState = MqttConnectionState.CONNECTED
+            ),
+            onPumpAction = {}
         )
     }
 }
