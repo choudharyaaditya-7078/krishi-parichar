@@ -317,11 +317,8 @@ The built-in LED is currently used to simulate pump output.
 | App-to-ESP8266 commands | Working |
 | ESP8266-to-app status response | Working |
 | Different Wi-Fi network communication | Tested successfully |
-| Built-in LED pump simulation | Working |
-| Physical water pump integration | Planned |
-| Actual water-flow verification | Planned |
-| Live agricultural sensor integration | Planned |
-| AI Crop Doctor backend | Future development |
+| Physical water pump integration | Tested successfully |
+| AI Crop Doctor backend | under working |
 
 ---
 
