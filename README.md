@@ -305,24 +305,25 @@ The built-in LED is currently used to simulate pump output.
 ---
 
 ## 🧪 Current Development Status
-+----------------------------------------------------------------------------+
-| Feature                                 | Status                           |
-|-----------------------------------------|----------------------------------|
-| Android application                     | Implemented                      |
-| Home dashboard UI                       | Implemented                      |
-| Pump control interface                  | Implemented                      |
-| ESP8266 Wi-Fi connection                | Working                          |
-| EMQX Cloud deployment                   | Configured                       |
-| MQTT communication                      | Working                          |
-| App-to-ESP8266 commands                 | Working                          |
-| ESP8266-to-app status response          | Working                          |
-| Different Wi-Fi network communication   | Tested successfully              |
-| Built-in LED pump simulation            | Working                          |
-| Physical water pump integration         | Planned                          |
-| Actual water-flow verification          | Planned                          |
-| Live agricultural sensor integration    | Planned                          |
-| AI Crop Doctor backend                  | Future development               |
-+----------------------------------------------------------------------------+
+
+| Feature | Status |
+|---|---|
+| Android application | Implemented |
+| Home dashboard UI | Implemented |
+| Pump control interface | Implemented |
+| ESP8266 Wi-Fi connection | Working |
+| EMQX Cloud deployment | Configured |
+| MQTT communication | Working |
+| App-to-ESP8266 commands | Working |
+| ESP8266-to-app status response | Working |
+| Different Wi-Fi network communication | Tested successfully |
+| Built-in LED pump simulation | Working |
+| Physical water pump integration | Planned |
+| Actual water-flow verification | Planned |
+| Live agricultural sensor integration | Planned |
+| AI Crop Doctor backend | Future development |
+
+---
 
 ## 🛣️ Development Roadmap
 
@@ -394,5 +395,5 @@ By combining mobile application development, IoT hardware, cloud communication, 
 **Original Project Identity:** Krishi Tech 5000 Pro  
 **Category:** Smart Agriculture | Internet of Things | Android Development | Embedded Systems
 
-Development Status: Active Development
+**Development Status:** Active Development
 
